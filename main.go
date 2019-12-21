@@ -6,6 +6,7 @@ package main
 
 import (
 	"bufio"
+	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -14,10 +15,36 @@ import (
 )
 
 func main() {
-	if err := elispToMarkdown(os.Stdout, os.Args[1]); err != nil {
+	output := flag.String("o", "", "output file")
+	flag.Parse()
+	if flag.NArg() == 0 {
+		fmt.Fprintf(os.Stderr, "error: argument required: input file name")
+		os.Exit(1)
+	}
+	if err := run(*output, flag.Arg(0)); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v", err)
 		os.Exit(1)
 	}
+}
+
+func run(outputFilename, intputFilename string) (err error) {
+	out := os.Stdout
+	if outputFilename != "" {
+		out, err = os.Create(outputFilename)
+		if err != nil {
+			return err
+		}
+		defer func() {
+			if err2 := out.Close(); err != nil {
+				if err == nil {
+					err = err2
+				} else {
+					fmt.Fprintf(os.Stderr, "error: %v", err2)
+				}
+			}
+		}()
+	}
+	return elispToMarkdown(out, intputFilename)
 }
 
 func elispToMarkdown(out io.Writer, filename string) error {
