@@ -16,20 +16,28 @@ import (
 
 func main() {
 	output := flag.String("o", "", "output file")
+	preserveHeader := flag.Bool("H", false, "preserve header")
 	flag.Parse()
 	if flag.NArg() == 0 {
 		fmt.Fprintf(os.Stderr, "error: argument required: input file name")
 		os.Exit(1)
 	}
-	if err := run(*output, flag.Arg(0)); err != nil {
+	if err := run(*output, flag.Arg(0), *preserveHeader); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v", err)
 		os.Exit(1)
 	}
 }
 
-func run(outputFilename, intputFilename string) (err error) {
+func run(outputFilename, intputFilename string, preserveHeader bool) (err error) {
 	out := os.Stdout
+	header := ""
 	if outputFilename != "" {
+		if preserveHeader {
+			header, err = readHeader(outputFilename)
+			if err != nil {
+				return err
+			}
+		}
 		out, err = os.Create(outputFilename)
 		if err != nil {
 			return err
@@ -44,10 +52,10 @@ func run(outputFilename, intputFilename string) (err error) {
 			}
 		}()
 	}
-	return elispToMarkdown(out, intputFilename)
+	return elispToMarkdown(out, intputFilename, header)
 }
 
-func elispToMarkdown(out io.Writer, filename string) error {
+func elispToMarkdown(out io.Writer, filename, header string) error {
 	w, ok := out.(*bufio.Writer)
 	if !ok {
 		w = bufio.NewWriter(out)
@@ -65,6 +73,11 @@ func elispToMarkdown(out io.Writer, filename string) error {
 			return err
 		}
 		return w.WriteByte('\n')
+	}
+	if header != "" {
+		if _, err := w.WriteString(header); err != nil {
+			return err
+		}
 	}
 	for sc.Scan() {
 		line := sc.Text()
@@ -89,7 +102,7 @@ func elispToMarkdown(out io.Writer, filename string) error {
 						return fmt.Errorf("file %s should be just base name", fn)
 					}
 					path := filepath.Join(filepath.Dir(filename), fn)
-					if err := elispToMarkdown(w, path); err != nil {
+					if err := elispToMarkdown(w, path, ""); err != nil {
 						return err
 					}
 					continue
@@ -139,4 +152,29 @@ func untabify(s string) string {
 		return s
 	}
 	return strings.Repeat(" ", 8*n) + t
+}
+
+func readHeader(filename string) (string, error) {
+	f, err := os.Open(filename)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	sc := bufio.NewScanner(f)
+	count := 0
+	lines := []string{}
+	for sc.Scan() {
+		line := sc.Text()
+		lines = append(lines, line)
+		if strings.TrimSpace(line) == "+++" {
+			count++
+		}
+		if count == 0 {
+			return "", fmt.Errorf("file %s does not start with a header", filename)
+		} else if count == 2 {
+			lines = append(lines, "\n")
+			return strings.Join(lines, "\n"), nil
+		}
+	}
+	return "", sc.Err()
 }
