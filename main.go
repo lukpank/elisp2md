@@ -193,6 +193,7 @@ func readHeader(filename string) (string, error) {
 
 const elispInit = `
 (package-initialize)
+(require 'use-package nil t)
 (add-hook 'emacs-lisp-mode-hook #'paren-face-mode)
 `
 
